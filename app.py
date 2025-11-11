@@ -4,11 +4,14 @@ import torchvision.models as models
 from torchvision import transforms
 from PIL import Image
 import gradio as gr
+import os # <-- NEW: Import the OS module
 
 # 1. Define the model class (must be the same as in model.py)
 class WeedCropCNN(nn.Module):
     def __init__(self, num_classes=2):
         super().__init__()
+        # Set pretrained=False when loading weights, as the weights file
+        # will contain the full state (including the final FC layer).
         self.base_model = models.resnet18(pretrained=False) 
         self.base_model.fc = nn.Linear(self.base_model.fc.in_features, num_classes)
 
@@ -28,11 +31,12 @@ class_names = ['Crop', 'Weed']
 NUM_CLASSES = len(class_names)
 
 model = WeedCropCNN(num_classes=NUM_CLASSES)
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# Use CPU if GPU is not available on the deployment server
+device = torch.device("cpu") 
 model.to(device)
 
 try:
-    # Load weights onto CPU or GPU
+    # Load weights onto CPU to ensure compatibility with most servers
     model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
     model.eval()
     print(f"Model loaded successfully from {MODEL_PATH}")
@@ -42,6 +46,9 @@ except FileNotFoundError:
 # 3. Inference function
 def classify_image(image):
     if image is None:
+        # Check if the model weights were loaded before proceeding
+        if 'eval' not in model.__dict__.keys(): 
+             return {"Error": "Model weights not loaded."}
         return "Please upload an image."
 
     # Preprocess the image
@@ -58,6 +65,13 @@ def classify_image(image):
     return confidences
 
 # 4. Gradio Interface
+# --- CRITICAL DEPLOYMENT CHANGE BELOW ---
+# Read the port from the environment variable (e.g., set by Render)
+# Use the Gradio environment variable names for clarity, though os.environ.get('PORT') 
+# is also common if not using GRADIO_SERVER_PORT.
+server_port = int(os.environ.get('GRADIO_SERVER_PORT', 7860)) 
+server_name = os.environ.get('GRADIO_SERVER_NAME', "0.0.0.0")
+
 gr.Interface(
     fn=classify_image,
     inputs=gr.Image(type="pil", label="Upload Crop/Weed Image"),
@@ -65,4 +79,7 @@ gr.Interface(
     title="Weed and Crop Classifier (ResNet18)",
     description="Upload an image to classify it as 'Crop' or 'Weed'.",
     allow_flagging="never"
-).launch()
+).launch(
+    server_name=server_name,
+    server_port=server_port 
+)
