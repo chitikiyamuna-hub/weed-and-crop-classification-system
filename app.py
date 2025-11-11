@@ -1,4 +1,3 @@
-# app.py
 import torch
 import torch.nn as nn
 import torchvision.models as models
@@ -10,34 +9,36 @@ import gradio as gr
 class WeedCropCNN(nn.Module):
     def __init__(self, num_classes=2):
         super().__init__()
-        self.base_model = models.resnet18(pretrained=False) # Load without weights first
+        self.base_model = models.resnet18(pretrained=False) 
         self.base_model.fc = nn.Linear(self.base_model.fc.in_features, num_classes)
 
     def forward(self, x):
         return self.base_model(x)
 
 # 2. Setup transformation and load model
-# Note: Use the same transforms as training but ToTensor() should be last
 preprocess = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
-    # Add normalization if you used it during training!
-    # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
 # Instantiate model and load weights
-model = WeedCropCNN(num_classes=len(['crop', 'weed'])) # Adjust class count if needed
-MODEL_PATH = "weed_crop_model.pth" # This file must be available in the deployment environment
+MODEL_PATH = "weed_crop_model.pth"
+class_names = ['Crop', 'Weed'] 
+NUM_CLASSES = len(class_names)
+
+model = WeedCropCNN(num_classes=NUM_CLASSES)
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+model.to(device)
 
 try:
-    model.load_state_dict(torch.load(MODEL_PATH, map_location=torch.device('cpu')))
+    # Load weights onto CPU or GPU
+    model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
     model.eval()
     print(f"Model loaded successfully from {MODEL_PATH}")
 except FileNotFoundError:
-    print("Model weights not found. Ensure weed_crop_model.pth is present.")
-
-class_names = ['Crop', 'Weed'] # Map class indices to labels
-
+    print("WARNING: Model weights (weed_crop_model.pth) not found. Cannot run inference.")
+    
 # 3. Inference function
 def classify_image(image):
     if image is None:
@@ -45,7 +46,7 @@ def classify_image(image):
 
     # Preprocess the image
     img_t = preprocess(image)
-    batch_t = torch.unsqueeze(img_t, 0) # Add batch dimension
+    batch_t = torch.unsqueeze(img_t, 0).to(device) # Add batch dimension and move to device
 
     # Run inference
     with torch.no_grad():
@@ -60,7 +61,8 @@ def classify_image(image):
 gr.Interface(
     fn=classify_image,
     inputs=gr.Image(type="pil", label="Upload Crop/Weed Image"),
-    outputs=gr.Label(num_top_classes=2),
+    outputs=gr.Label(num_top_classes=NUM_CLASSES),
     title="Weed and Crop Classifier (ResNet18)",
-    description="Upload an image to classify it as 'Crop' or 'Weed'."
+    description="Upload an image to classify it as 'Crop' or 'Weed'.",
+    allow_flagging="never"
 ).launch()
