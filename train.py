@@ -4,27 +4,30 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
-from model import WeedCropCNN # Assumes model.py is in the same directory
+from model import WeedCropCNN # Import the model class
 
-# Transform images
+# Define transformations for training
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
-    transforms.ToTensor()
-    # NOTE: It's highly recommended to add normalization here for pre-trained models:
-    # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    transforms.ToTensor(),
+    # Recommended normalization for models pre-trained on ImageNet:
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
-# Load dataset
-# Ensure your dataset is structured like: dataset/crop/image.jpg and dataset/weed/image.jpg
-train_dataset = datasets.ImageFolder("dataset/", transform=transform)
+# Load dataset: assumes images are structured as 'dataset/class_name/image.jpg'
+try:
+    train_dataset = datasets.ImageFolder("dataset/", transform=transform)
+except FileNotFoundError:
+    print("Error: 'dataset/' folder not found. Please create it with 'crop/' and 'weed/' subfolders.")
+    exit()
+    
 train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
 
 # Initialize model
-# Automatically sets num_classes based on the number of folders in "dataset/"
 num_classes = len(train_dataset.classes)
 model = WeedCropCNN(num_classes=num_classes)
 
-# Move model to GPU if available
+# Setup device
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 model.to(device)
 
@@ -33,14 +36,15 @@ optimizer = optim.Adam(model.parameters(), lr=0.001)
 
 # Training loop
 epochs = 10
-print(f"Starting training on device: {device}")
+print(f"Starting training on device: {device} for {epochs} epochs...")
+
 for epoch in range(epochs):
+    model.train() # Set model to training mode
     running_loss = 0.0
     correct = 0
     total = 0
 
     for images, labels in train_loader:
-        # Move data to the same device as the model
         images, labels = images.to(device), labels.to(device)
         
         optimizer.zero_grad()
