@@ -1,0 +1,120 @@
+# setting up GPU
+# clone darknet repo
+!git clone https://github.com/AlexeyAB/darknet
+# change makefile to have GPU and OPENCV enabled
+%cd darknet
+!sed -i 's/OPENCV=0/OPENCV=1/' Makefile
+!sed -i 's/GPU=0/GPU=1/' Makefile
+!sed -i 's/CUDNN=0/CUDNN=1/' Makefile
+# verify CUDA
+!/usr/local/cuda/bin/nvcc --version
+# make darknet (build)
+!make
+# define helper functions
+def imShow(path):
+    import cv2
+    import matplotlib.pyplot as plt
+    %matplotlib inline
+
+    image = cv2.imread(path)
+    height, width = image.shape[:2]
+    resized_image = cv2.resize(image,(3*width, 3*height), interpolation = cv2.INTER_CUBIC)
+
+    fig = plt.gcf()
+    fig.set_size_inches(18, 10)
+    plt.axis("off")
+    plt.imshow(cv2.cvtColor(resized_image, cv2.COLOR_BGR2RGB))
+    plt.show()
+
+# use this to upload files
+def upload():
+    from google.colab import files
+    uploaded = files.upload() 
+    for name, data in uploaded.items():
+        with open(name, 'wb') as f:
+            f.write(data)
+            print ('saved file', name)
+
+# use this to download a file  
+def download(path):
+    from google.colab import files
+    files.download(path)
+# mounting google drive for data 
+# mounting google drive
+%cd ..
+from google.colab import drive
+drive.mount('/content/gdrive')
+# this creates a symbolic link so that now the path /content/gdrive/My\ Drive/ is equal to /mydrive
+!ln -s /content/gdrive/My\ Drive/ /mydrive
+!ls /mydrive
+# From github copy all file from *crop_weed_detection_training* folder and make *Agriculture* (same name requires) folder and paste.
+!ls /mydrive/Agriculture
+# Downloading dataset
+
+# Please follow the steps below to download and use kaggle data within Google Colab:
+# 1. Go to you kaggle > account, Scroll to API section and Click Expire API Token(if you have created previously) to remove previous tokens
+# 2. Click on Create New API Token - It will download kaggle.json file on your machine.
+# 3. Now just run bellow cell.
+!pip install -q kaggle
+from google.colab import files
+#upload kaggle.json file which you downloaded earlier
+files.upload()
+! mkdir ~/.kaggle
+! cp kaggle.json ~/.kaggle/
+! chmod 600 ~/.kaggle/kaggle.json
+! kaggle datasets list
+!kaggle datasets download -d ravirajsinh45/crop-and-weed-detection-data-with-bounding-boxes
+%cd darknet
+# unzip the zip file and its contents should now be in /darknet/data/obj
+!unzip ../crop-and-weed-detection-data-with-bounding-boxes.zip -d data/
+# upload the custom .cfg back to cloud VM from Google Drive
+!cp /mydrive/Agriculture/crop_weed.cfg ./cfg
+
+# upload the custom .cfg back to cloud VM from local machine (uncomment to use)
+#%cd cfg
+#upload()
+#%cd .. 
+# upload the obj.names and obj.data files to cloud VM from Google Drive
+!cp /mydrive/Agriculture/obj.names ./data
+!cp /mydrive/Agriculture/obj.data  ./data
+
+# upload the obj.names and obj.data files to cloud VM from local machine (uncomment to use)
+#%cd data
+#upload()
+#%cd .. 
+# upload the generate_train.py script to cloud VM from Google Drive
+!cp /mydrive/Agriculture/generate_train.py ./
+
+# upload the generate_train.py script to cloud VM from local machine (uncomment to use)
+#upload()
+!python generate_train.py
+# train.txt file should have to here.
+!ls data/agri_data
+# upload pretrained convolutional layer weights
+!wget http://pjreddie.com/media/files/darknet53.conv.74
+
+
+# press ctrl+shift+i than paste below code 
+# open console and paste below code else your runtime will crash after some time
+'''
+function ClickConnect(){
+console.log("Working"); 
+document.querySelector("colab-toolbar-button#connect").click() 
+}
+setInterval(ClickConnect,60000)
+'''
+# Training
+# train your custom detector
+!./darknet detector train data/obj.data cfg/crop_weed.cfg darknet53.conv.74 -dont_show
+imShow('chart.png')
+
+# Testing
+# need to set our custom cfg to test mode 
+%cd cfg
+!sed -i 's/batch=32/batch=1/' crop_weed.cfg
+!sed -i 's/subdivisions=16/subdivisions=1/' crop_weed.cfg
+%cd ..
+!ls /mydrive/Agriculture/test
+# run your custom detector with this command (upload an image to your google drive to test, thresh flag sets accuracy that detection must be in order to show it)
+!./darknet detector test data/obj.data cfg/crop_weed.cfg /mydrive/Agriculture/backup/yolov3_custom_final.weights /mydrive/Agriculture/test/weed_1.jpeg  -thresh 0.3
+imShow('predictions.jpg')
